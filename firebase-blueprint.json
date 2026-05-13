@@ -1,0 +1,111 @@
+{
+  "entities": {
+    "User": {
+      "title": "User Profile",
+      "description": "User profile information for athletes, coaches, and organizers.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "displayName": { "type": "string" },
+        "email": { "type": "string", "format": "email" },
+        "photoURL": { "type": "string" },
+        "role": { "type": "string", "enum": ["athlete", "coach", "admin"] },
+        "clubId": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "displayName", "email", "role"]
+    },
+    "Tournament": {
+      "title": "Tournament",
+      "description": "Details about a wrestling tournament.",
+      "type": "object",
+      "properties": {
+        "tournamentId": { "type": "string" },
+        "name": { "type": "string" },
+        "location": { "type": "string" },
+        "startDate": { "type": "string", "format": "date-time" },
+        "endDate": { "type": "string", "format": "date-time" },
+        "organizerId": { "type": "string" },
+        "status": { "type": "string", "enum": ["draft", "upcoming", "ongoing", "completed"] },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["tournamentId", "name", "organizerId", "status"]
+    },
+    "Bracket": {
+      "title": "Bracket",
+      "description": "A weight class bracket within a tournament.",
+      "type": "object",
+      "properties": {
+        "bracketId": { "type": "string" },
+        "weightClass": { "type": "string" },
+        "gender": { "type": "string" },
+        "style": { "type": "string" },
+        "tournamentId": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["bracketId", "weightClass", "tournamentId"]
+    },
+    "Match": {
+      "title": "Match",
+      "description": "A match within a bracket.",
+      "type": "object",
+      "properties": {
+        "matchId": { "type": "string" },
+        "bracketId": { "type": "string" },
+        "round": { "type": "integer" },
+        "position": { "type": "integer" },
+        "athleteAId": { "type": "string" },
+        "athleteBId": { "type": "string" },
+        "scoreA": { "type": "integer" },
+        "scoreB": { "type": "integer" },
+        "winnerId": { "type": "string" },
+        "status": { "type": "string", "enum": ["pending", "ongoing", "completed"] },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["matchId", "bracketId", "round", "position", "status"]
+    },
+    "Athlete": {
+      "title": "Athlete",
+      "description": "Detailed profile for an athlete including stats.",
+      "type": "object",
+      "properties": {
+        "athleteId": { "type": "string" },
+        "userId": { "type": "string" },
+        "name": { "type": "string" },
+        "clubId": { "type": "string" },
+        "totalMatches": { "type": "integer" },
+        "wins": { "type": "integer" },
+        "losses": { "type": "integer" },
+        "weight": { "type": "number" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["athleteId", "name"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "User profiles."
+    },
+    "/tournaments/{tournamentId}": {
+      "schema": "Tournament",
+      "description": "Tournament records."
+    },
+    "/tournaments/{tournamentId}/brackets/{bracketId}": {
+      "schema": "Bracket",
+      "description": "Brackets for a specific tournament."
+    },
+    "/tournaments/{tournamentId}/brackets/{bracketId}/matches/{matchId}": {
+      "schema": "Match",
+      "description": "Matches within a specific bracket."
+    },
+    "/athletes/{athleteId}": {
+      "schema": "Athlete",
+      "description": "Athlete profiles and statistics."
+    }
+  }
+}

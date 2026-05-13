@@ -1,0 +1,99 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Default deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Helper functions
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isEmailVerified() {
+      return request.auth.token.email_verified == true;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    // Validation Helpers
+    function isValidUser(data) {
+      return data.userId == request.auth.uid &&
+             data.displayName is string && data.displayName.size() <= 100 &&
+             data.email is string && data.email.size() <= 100 &&
+             data.role in ['athlete', 'coach', 'admin'];
+    }
+
+    function isValidTournament(data) {
+      return data.tournamentId is string && data.name is string && data.name.size() <= 200 &&
+             data.organizerId == request.auth.uid &&
+             data.status in ['draft', 'upcoming', 'ongoing', 'completed'];
+    }
+
+    function isValidBracket(data) {
+      return data.bracketId is string && data.weightClass is string && data.weightClass.size() <= 20 &&
+             data.tournamentId is string;
+    }
+
+    function isValidMatch(data) {
+      return data.matchId is string && data.bracketId is string &&
+             data.round is int && data.position is int &&
+             data.status in ['pending', 'ongoing', 'completed'];
+    }
+
+    function isValidAthlete(data) {
+      return data.athleteId is string && data.name is string && data.name.size() <= 100;
+    }
+
+    // Collection Rules
+    match /users/{userId} {
+      allow get: if isSignedIn();
+      allow list: if false; // No blanket listing
+      allow create: if isOwner(userId) && isValidUser(incoming()) && incoming().createdAt == request.time;
+      allow update: if isOwner(userId) && isValidUser(incoming()) && 
+                       incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'photoURL', 'clubId', 'updatedAt']) &&
+                       incoming().updatedAt == request.time;
+    }
+
+    match /tournaments/{tournamentId} {
+      allow get: if true;
+      allow list: if true;
+      allow create: if isSignedIn() && isEmailVerified() && isValidTournament(incoming()) && incoming().createdAt == request.time;
+      allow update: if isSignedIn() && isOwner(existing().organizerId) && isValidTournament(incoming()) &&
+                       incoming().updatedAt == request.time;
+      allow delete: if isSignedIn() && isOwner(existing().organizerId);
+
+      match /brackets/{bracketId} {
+        allow read: if true;
+        allow write: if isSignedIn() && isOwner(get(/databases/$(database)/documents/tournaments/$(tournamentId)).data.organizerId);
+      }
+    }
+
+    match /tournaments/{tournamentId}/brackets/{bracketId}/matches/{matchId} {
+      allow read: if true;
+      allow write: if isSignedIn() && isOwner(get(/databases/$(database)/documents/tournaments/$(tournamentId)).data.organizerId);
+    }
+
+    match /athletes/{athleteId} {
+      allow get: if true;
+      allow list: if true;
+      allow create: if isSignedIn() && isValidAthlete(incoming());
+      allow update: if isSignedIn() && (isOwner(existing().userId) || isOwner(get(/databases/$(database)/documents/tournaments/$(incoming().tournamentId)).data.organizerId));
+    }
+  }
+}
