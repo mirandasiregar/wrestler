@@ -28,14 +28,23 @@ export default function ScoringPanel({ match, tournamentId, bracketId, onOpenCha
     }
   };
 
-  const handleFinishMatch = async (winnerId: string) => {
+  const handleFinishMatch = async (explicitWinnerId?: string) => {
     setLoading(true);
     try {
+      let finalWinnerId = explicitWinnerId;
+      if (!finalWinnerId) {
+        if (scoreA > scoreB) {
+          finalWinnerId = match.athleteAId;
+        } else if (scoreB > scoreA) {
+          finalWinnerId = match.athleteBId;
+        }
+      }
+
       const matchRef = doc(db, `tournaments/${tournamentId}/brackets/${bracketId}/matches/${match.id}`);
       await updateDoc(matchRef, {
         scoreA,
         scoreB,
-        winnerId,
+        winnerId: finalWinnerId || null,
         status: 'completed',
         updatedAt: new Date()
       });
@@ -80,29 +89,41 @@ export default function ScoringPanel({ match, tournamentId, bracketId, onOpenCha
         </div>
 
         <div className="space-y-4">
-          <button 
-            disabled={loading}
-            onClick={handleUpdateScore}
-            className="w-full py-4 bg-[#141414] text-[#E4E3E0] font-mono text-sm uppercase tracking-widest hover:bg-zinc-800 transition-colors disabled:opacity-50"
-          >
-            Update Live Scores
-          </button>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <button 
+              disabled={loading}
+              onClick={handleUpdateScore}
+              className="py-4 border-2 border-[#141414] text-[#141414] font-mono text-sm uppercase tracking-widest hover:bg-[#141414] hover:text-[#E4E3E0] transition-colors disabled:opacity-50"
+            >
+              Update Score
+            </button>
+            <button 
+              disabled={loading}
+              onClick={() => handleFinishMatch()}
+              className="py-4 bg-[#FF4E00] text-white border-2 border-[#141414] font-black italic uppercase tracking-widest hover:bg-[#CC3E00] transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+            >
+              <Check size={18} /> Finish Match
+            </button>
+          </div>
           
-          <div className="grid grid-cols-2 gap-4">
-            <button 
-              disabled={loading}
-              onClick={() => handleFinishMatch(match.athleteAId!)}
-              className="py-4 border-2 border-[#141414] text-[#141414] font-mono text-xs uppercase tracking-widest hover:bg-blue-600 hover:text-white transition-colors flex items-center justify-center gap-2"
-            >
-              <Trophy size={14} /> Winner A
-            </button>
-            <button 
-              disabled={loading}
-              onClick={() => handleFinishMatch(match.athleteBId!)}
-              className="py-4 border-2 border-[#141414] text-[#141414] font-mono text-xs uppercase tracking-widest hover:bg-red-600 hover:text-white transition-colors flex items-center justify-center gap-2"
-            >
-              <Trophy size={14} /> Winner B
-            </button>
+          <div className="pt-6 border-t border-[#141414]/10">
+            <p className="font-mono text-[10px] uppercase opacity-40 mb-3 text-center">Override Winner (Manual Selective)</p>
+            <div className="grid grid-cols-2 gap-4">
+              <button 
+                disabled={loading}
+                onClick={() => handleFinishMatch(match.athleteAId!)}
+                className="py-3 border border-[#141414] text-[#141414] font-mono text-[10px] uppercase tracking-widest hover:bg-blue-600 hover:text-white transition-colors flex items-center justify-center gap-2"
+              >
+                <Trophy size={12} /> Force Winner A
+              </button>
+              <button 
+                disabled={loading}
+                onClick={() => handleFinishMatch(match.athleteBId!)}
+                className="py-3 border border-[#141414] text-[#141414] font-mono text-[10px] uppercase tracking-widest hover:bg-red-600 hover:text-white transition-colors flex items-center justify-center gap-2"
+              >
+                <Trophy size={12} /> Force Winner B
+              </button>
+            </div>
           </div>
         </div>
       </motion.div>

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { auth, db, googleProvider } from './lib/firebase';
+import { auth, db, googleProvider, handleFirestoreError, OperationType } from './lib/firebase';
 import { onAuthStateChanged, signInWithPopup, signOut, User } from 'firebase/auth';
 import { collection, query, getDocs, where, limit, orderBy, onSnapshot, doc, setDoc } from 'firebase/firestore';
 import { Trophy, Users, BarChart3, Settings, LogOut, ChevronRight, Plus, MapPin, Calendar, Layout, User as UserIcon } from 'lucide-react';
@@ -13,12 +13,13 @@ import CreateTournament from './components/CreateTournament';
 
 // Mock/Initial Data for demonstration if empty
 const INITIAL_TOURNAMENTS: Partial<Tournament>[] = [
-  { id: '1', name: 'Kejuaraan Nasional Gulat 2024', location: 'Jakarta', status: 'ongoing', startDate: new Date() },
-  { id: '2', name: 'Piala Gubernur Banten', location: 'Serang', status: 'upcoming', startDate: new Date(Date.now() + 86400000 * 14) },
+  { id: '1', name: 'Kejuaraan Nasional Gulat 2024', location: 'Jakarta', status: 'ongoing', startDate: new Date(), createdAt: new Date() },
+  { id: '2', name: 'Piala Gubernur Banten', location: 'Serang', status: 'upcoming', startDate: new Date(Date.now() + 86400000 * 14), createdAt: new Date() },
 ];
 
 export default function App() {
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [isLoggingIn, setIsLoggingIn] = useState(false);
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [activeTab, setActiveTab] = useState<'tournaments' | 'stats' | 'dashboard'>('tournaments');
@@ -55,10 +56,13 @@ export default function App() {
     });
 
     // Fetch tournaments for public view
-    const q = query(collection(db, 'tournaments'), orderBy('createdAt', 'desc'));
+    // Adding limit and re-enabling in-memory sort for now
+    const q = query(collection(db, 'tournaments'), limit(50));
     const unsubTournaments = onSnapshot(q, (snap) => {
       const items = snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Tournament));
-      setTournaments(items);
+      setTournaments(items.sort((a: any, b: any) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0)));
+    }, (error) => {
+      handleFirestoreError(error, OperationType.LIST, 'tournaments');
     });
 
     return () => {
@@ -68,10 +72,16 @@ export default function App() {
   }, []);
 
   const handleLogin = async () => {
+    if (isLoggingIn) return;
+    setIsLoggingIn(true);
     try {
       await signInWithPopup(auth, googleProvider);
-    } catch (err) {
-      console.error(err);
+    } catch (err: any) {
+      if (err.code !== 'auth/cancelled-popup-request' && err.code !== 'auth/popup-closed-by-user') {
+        console.error('Login Error:', err);
+      }
+    } finally {
+      setIsLoggingIn(false);
     }
   };
 
@@ -253,7 +263,7 @@ export default function App() {
   );
 }
 
-function NavButton({ active, icon, label, onClick }: { active: boolean, icon: React.ReactNode, label: string, onClick: () => void }) {
+function NavButton({ active, icon, label, onClick }: { active: boolean, icon: React.ReactNode, label: string, onClick: () => void, key?: any }) {
   return (
     <button 
       onClick={onClick}
@@ -269,7 +279,7 @@ function NavButton({ active, icon, label, onClick }: { active: boolean, icon: Re
   );
 }
 
-function TournamentCard({ tournament, onClick }: { tournament: Partial<Tournament>, onClick: () => void }) {
+function TournamentCard({ tournament, onClick }: { tournament: Partial<Tournament>, onClick: () => void, key?: any }) {
   return (
     <motion.div 
       onClick={onClick}

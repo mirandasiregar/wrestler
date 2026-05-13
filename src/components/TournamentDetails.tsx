@@ -7,12 +7,14 @@ import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '../lib/utils';
 import ScoringPanel from './ScoringPanel';
 import { generateKnockoutBracket } from '../services/bracketService';
+import AthleteProfile from './AthleteProfile';
 
 export default function TournamentDetails({ tournament, onBack }: { tournament: Tournament, onBack: () => void }) {
   const [brackets, setBrackets] = useState<Bracket[]>([]);
   const [activeBracket, setActiveBracket] = useState<Bracket | null>(null);
   const [matches, setMatches] = useState<Match[]>([]);
   const [selectedMatch, setSelectedMatch] = useState<Match | null>(null);
+  const [selectedAthleteId, setSelectedAthleteId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [isAddingAthlete, setIsAddingAthlete] = useState(false);
   const [newAthleteName, setNewAthleteName] = useState('');
@@ -26,6 +28,9 @@ export default function TournamentDetails({ tournament, onBack }: { tournament: 
         name: newAthleteName,
         tournamentId: tournament.id,
         bracketId: activeBracket.id,
+        wins: 0,
+        losses: 0,
+        totalMatches: 0,
         createdAt: new Date()
       });
       setNewAthleteName('');
@@ -66,7 +71,7 @@ export default function TournamentDetails({ tournament, onBack }: { tournament: 
       setLoading(false);
     });
     return () => unsubBrackets();
-  }, [tournament.id]);
+  }, [tournament.id, activeBracket]);
 
   useEffect(() => {
     if (!activeBracket) return;
@@ -77,6 +82,10 @@ export default function TournamentDetails({ tournament, onBack }: { tournament: 
     });
     return () => unsubMatches();
   }, [activeBracket, tournament.id]);
+
+  if (selectedAthleteId) {
+    return <AthleteProfile athleteId={selectedAthleteId} onBack={() => setSelectedAthleteId(null)} />;
+  }
 
   return (
     <div className="space-y-12">
@@ -161,6 +170,7 @@ export default function TournamentDetails({ tournament, onBack }: { tournament: 
                     key={match.id} 
                     match={match} 
                     onClick={isOrganizer ? () => setSelectedMatch(match) : undefined}
+                    onViewAthlete={setSelectedAthleteId}
                   />
                 ))}
               </div>
@@ -207,17 +217,59 @@ function groupMatchesByRound(matches: Match[]) {
   return rounds;
 }
 
-function MatchCard({ match, onClick }: { match: Match, onClick?: () => void }) {
+function MatchCard({ match, onClick, onViewAthlete }: { match: Match, onClick?: () => void, onViewAthlete?: (id: string) => void, key?: any }) {
+  const [elapsed, setElapsed] = useState<number>(0);
+
+  useEffect(() => {
+    let interval: any;
+    if (match.status === 'ongoing') {
+      // Calculate based on updatedAt as a proxy for start time
+      const startTime = match.updatedAt?.toDate ? match.updatedAt.toDate().getTime() : (match.updatedAt ? new Date(match.updatedAt).getTime() : Date.now());
+      
+      const updateTimer = () => {
+        const now = Date.now();
+        setElapsed(Math.max(0, Math.floor((now - startTime) / 1000)));
+      };
+
+      updateTimer();
+      interval = setInterval(updateTimer, 1000);
+    } else {
+      setElapsed(0);
+    }
+
+    return () => {
+      if (interval) clearInterval(interval);
+    };
+  }, [match.status, match.updatedAt]);
+
+  const formatTimer = (seconds: number) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
+  };
+
   return (
     <div 
-      onClick={onClick}
       className={cn(
         "w-64 bg-white border border-[#141414] shadow-[4px_4px_0px_0px_rgba(20,20,20,1)] flex flex-col overflow-hidden group transition-all",
-        onClick ? "cursor-pointer hover:-translate-y-1 hover:shadow-[6px_6px_0px_0px_rgba(255,78,0,0.8)]" : "opacity-90"
+        onClick ? "hover:-translate-y-1 hover:shadow-[6px_6px_0px_0px_rgba(255,78,0,0.8)]" : "opacity-90"
       )}
     >
-      <div className="bg-[#141414] text-[#E4E3E0] p-1 flex justify-between items-center">
-        <span className="text-[8px] font-mono uppercase tracking-[0.2em] ml-2">Match #{match.position + 1}</span>
+      <div 
+        onClick={onClick}
+        className={cn(
+          "bg-[#141414] text-[#E4E3E0] p-1 flex justify-between items-center cursor-default",
+          onClick && "cursor-pointer"
+        )}
+      >
+        <div className="flex items-center gap-2">
+          <span className="text-[8px] font-mono uppercase tracking-[0.2em] ml-2">Match #{match.position + 1}</span>
+          {match.status === 'ongoing' && (
+            <span className="font-mono text-[9px] text-orange-400 font-bold animate-pulse">
+               [{formatTimer(elapsed)}]
+            </span>
+          )}
+        </div>
         <div className={cn(
           "px-2 py-0.5 text-[8px] font-mono uppercase tracking-tighter",
           match.status === 'ongoing' ? "bg-orange-600" : (match.status === 'completed' ? "bg-green-600" : "bg-zinc-800")
@@ -226,24 +278,42 @@ function MatchCard({ match, onClick }: { match: Match, onClick?: () => void }) {
         </div>
       </div>
       
-      <AthleteRow name={match.athleteAId || "TBA"} score={match.scoreA} isWinner={match.winnerId === match.athleteAId} />
+      <AthleteRow 
+        name={match.athleteAId || "TBA"} 
+        id={match.athleteAId}
+        score={match.scoreA} 
+        isWinner={match.winnerId === match.athleteAId} 
+        onView={onViewAthlete}
+      />
       <div className="h-px bg-[#141414] opacity-10" />
-      <AthleteRow name={match.athleteBId || "TBA"} score={match.scoreB} isWinner={match.winnerId === match.athleteBId} />
+      <AthleteRow 
+        name={match.athleteBId || "TBA"} 
+        id={match.athleteBId}
+        score={match.scoreB} 
+        isWinner={match.winnerId === match.athleteBId} 
+        onView={onViewAthlete}
+      />
     </div>
   );
 }
 
-function AthleteRow({ name, score, isWinner }: { name: string, score: number, isWinner: boolean }) {
+function AthleteRow({ name, id, score, isWinner, onView }: { name: string, id?: string, score: number, isWinner: boolean, onView?: (id: string) => void }) {
   return (
     <div className={cn(
       "flex justify-between items-center p-3 h-12 transition-colors",
       isWinner ? "bg-green-50" : "bg-white"
     )}>
-      <span className={cn(
-        "font-bold uppercase tracking-tight text-sm truncate",
-        isWinner ? "text-green-800" : "opacity-80"
-      )}>{name}</span>
-      <span className="font-mono font-bold text-lg">{score}</span>
+      <span 
+        onClick={() => id && onView?.(id)}
+        className={cn(
+          "font-bold uppercase tracking-tight text-sm truncate",
+          isWinner ? "text-green-800" : "opacity-80",
+          id && "cursor-pointer hover:underline decoration-[#FF4E00] decoration-2"
+        )}
+      >
+        {name}
+      </span>
+      <span className="font-mono font-bold text-lg tabular-nums">{score}</span>
     </div>
   );
 }
