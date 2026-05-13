@@ -10,36 +10,29 @@ service cloud.firestore {
       return isSignedIn() && request.auth.uid == userId;
     }
 
-    // Default deny
+    // Tournaments - Publicly readable including all subcollections
+    match /tournaments/{document=**} {
+      allow read: if true;
+      allow write: if isSignedIn();
+    }
+
+    // Athletes - Publicly readable including all subcollections
+    match /athletes/{document=**} {
+      allow read: if true;
+      allow write: if isSignedIn();
+    }
+
+    // Users - Restricted to owners
+    match /users/{userId} {
+      allow get: if isSignedIn();
+      allow list: if isSignedIn() && resource.data.userId == request.auth.uid;
+      allow create: if isOwner(userId);
+      allow update: if isOwner(userId);
+    }
+
+    // Catch-all deny
     match /{document=**} {
       allow read, write: if false;
-    }
-
-    // Tournaments - Publicly readable
-    match /tournaments/{tournamentId} {
-      allow read: if true;
-      allow write: if isSignedIn();
-
-      match /brackets/{bracketId} {
-        allow read: if true;
-        allow write: if isSignedIn();
-        
-        match /matches/{matchId} {
-          allow read: if true;
-          allow write: if isSignedIn();
-        }
-      }
-    }
-
-    // Athletes - Publicly readable
-    match /athletes/{athleteId} {
-      allow read: if true;
-      allow write: if isSignedIn();
-    }
-
-    // Users
-    match /users/{userId} {
-      allow read, write: if isOwner(userId);
     }
   }
 }
