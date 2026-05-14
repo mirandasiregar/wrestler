@@ -1,36 +1,31 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Helpers
+    // Basic helpers
     function isSignedIn() {
       return request.auth != null;
     }
-    
-    function isOwner(userId) {
-      return isSignedIn() && request.auth.uid == userId;
-    }
 
-    // Tournaments - Publicly readable including all subcollections
-    match /tournaments/{document=**} {
+    // Rules for tournaments and its subcollections
+    match /tournaments/{allPaths=**} {
       allow read: if true;
       allow write: if isSignedIn();
     }
 
-    // Athletes - Publicly readable including all subcollections
-    match /athletes/{document=**} {
+    // Rules for athletes
+    match /athletes/{allPaths=**} {
       allow read: if true;
       allow write: if isSignedIn();
     }
 
-    // Users - Restricted to owners
+    // Rules for users
     match /users/{userId} {
       allow get: if isSignedIn();
-      allow list: if isSignedIn() && resource.data.userId == request.auth.uid;
-      allow create: if isOwner(userId);
-      allow update: if isOwner(userId);
+      allow list: if isSignedIn();
+      allow write: if isSignedIn() && request.auth.uid == userId;
     }
 
-    // Catch-all deny
+    // Default deny
     match /{document=**} {
       allow read, write: if false;
     }

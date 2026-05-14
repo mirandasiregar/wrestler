@@ -9,6 +9,7 @@ import { Tournament, Athlete, UserProfile } from './types';
 import TournamentDetails from './components/TournamentDetails';
 
 import AthleteStats from './components/AthleteStats';
+import AnalyticsModule from './components/AnalyticsModule';
 import CreateTournament from './components/CreateTournament';
 
 // Mock/Initial Data for demonstration if empty
@@ -22,7 +23,7 @@ export default function App() {
   const [isLoggingIn, setIsLoggingIn] = useState(false);
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
-  const [activeTab, setActiveTab] = useState<'tournaments' | 'stats' | 'dashboard'>('tournaments');
+  const [activeTab, setActiveTab] = useState<'tournaments' | 'stats' | 'dashboard' | 'analytics'>('tournaments');
   const [tournaments, setTournaments] = useState<Tournament[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -56,8 +57,7 @@ export default function App() {
     });
 
     // Fetch tournaments for public view
-    // Adding limit and re-enabling in-memory sort for now
-    const q = query(collection(db, 'tournaments'), limit(50));
+    const q = collection(db, 'tournaments');
     const unsubTournaments = onSnapshot(q, (snap) => {
       const items = snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Tournament));
       setTournaments(items.sort((a: any, b: any) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0)));
@@ -125,9 +125,15 @@ export default function App() {
             label="Tournaments"
           />
           <NavButton 
+            active={activeTab === 'analytics'} 
+            onClick={() => { setActiveTab('analytics'); setSelectedTournament(null); }}
+            icon={<BarChart3 size={20} />}
+            label="Analytics"
+          />
+          <NavButton 
             active={activeTab === 'stats'} 
             onClick={() => { setActiveTab('stats'); setSelectedTournament(null); }}
-            icon={<BarChart3 size={20} />}
+            icon={<Users size={20} />}
             label="Athlete Stats"
           />
           {user && (
@@ -214,6 +220,18 @@ export default function App() {
                         <TournamentCard key={t.id} tournament={t as any} onClick={() => setSelectedTournament(t as any)} />
                       ))}
                   </div>
+                </motion.section>
+              )}
+
+              {activeTab === 'analytics' && (
+                <motion.section
+                  key="analytics"
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -10 }}
+                  className="max-w-6xl mx-auto"
+                >
+                  <AnalyticsModule />
                 </motion.section>
               )}
 
