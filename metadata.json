@@ -2,5 +2,5 @@
   "name": "WrestleTracker",
   "description": "Wrestling tournament management and athlete statistics SaaS platform featuring automatic bracket generation and real-time scoring.",
   "requestFramePermissions": [],
-  "majorCapabilities": []
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

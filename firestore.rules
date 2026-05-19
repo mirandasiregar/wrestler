@@ -12,8 +12,20 @@ service cloud.firestore {
       allow write: if isSignedIn();
     }
 
+    // Rules for matches (supporting collectionGroup)
+    match /{path=**}/matches/{matchId} {
+      allow read: if true;
+      allow write: if isSignedIn();
+    }
+
     // Rules for athletes
     match /athletes/{allPaths=**} {
+      allow read: if true;
+      allow write: if isSignedIn();
+    }
+
+    // Rules for matches (top-level fallback if used)
+    match /matches/{allPaths=**} {
       allow read: if true;
       allow write: if isSignedIn();
     }

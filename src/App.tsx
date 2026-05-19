@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { auth, db, googleProvider, handleFirestoreError, OperationType } from './lib/firebase';
 import { onAuthStateChanged, signInWithPopup, signOut, User } from 'firebase/auth';
-import { collection, query, getDocs, where, limit, orderBy, onSnapshot, doc, setDoc } from 'firebase/firestore';
+import { collection, query, getDocs, where, limit, orderBy, onSnapshot, doc, setDoc, collectionGroup } from 'firebase/firestore';
 import { Trophy, Users, BarChart3, Settings, LogOut, ChevronRight, Plus, MapPin, Calendar, Layout, User as UserIcon } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn, formatDate } from './lib/utils';
@@ -21,10 +21,14 @@ const INITIAL_TOURNAMENTS: Partial<Tournament>[] = [
 export default function App() {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [isLoggingIn, setIsLoggingIn] = useState(false);
+  const [authError, setAuthError] = useState<string | null>(null);
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [activeTab, setActiveTab] = useState<'tournaments' | 'stats' | 'dashboard' | 'analytics'>('tournaments');
   const [tournaments, setTournaments] = useState<Tournament[]>([]);
+  const [liveMatchesCount, setLiveMatchesCount] = useState(0);
+  const [totalAthletesCount, setTotalAthletesCount] = useState(0);
+  const [upcomingEventsCount, setUpcomingEventsCount] = useState(0);
   const [loading, setLoading] = useState(true);
 
   const [selectedTournament, setSelectedTournament] = useState<Tournament | null>(null);
@@ -61,24 +65,50 @@ export default function App() {
     const unsubTournaments = onSnapshot(q, (snap) => {
       const items = snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Tournament));
       setTournaments(items.sort((a: any, b: any) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0)));
+      
+      // Calculate upcoming events in real-time
+      const upcoming = items.filter(t => t.status === 'upcoming').length;
+      setUpcomingEventsCount(upcoming);
     }, (error) => {
       handleFirestoreError(error, OperationType.LIST, 'tournaments');
+    });
+
+    // Real-time live matches
+    const matchesQ = query(collectionGroup(db, 'matches'), where('status', '==', 'ongoing'));
+    const unsubMatches = onSnapshot(matchesQ, (snap) => {
+      setLiveMatchesCount(snap.size);
+    }, (error) => {
+      console.error("Matches listener error:", error);
+    });
+
+    // Real-time total athletes
+    const athletesQ = collection(db, 'athletes');
+    const unsubAthletes = onSnapshot(athletesQ, (snap) => {
+      setTotalAthletesCount(snap.size);
+    }, (error) => {
+      console.error("Athletes listener error:", error);
     });
 
     return () => {
       unsubscribe();
       unsubTournaments();
+      unsubMatches();
+      unsubAthletes();
     };
   }, []);
 
   const handleLogin = async () => {
+    console.log('Login attempt started');
     if (isLoggingIn) return;
     setIsLoggingIn(true);
     try {
+      setAuthError(null);
       await signInWithPopup(auth, googleProvider);
+      console.log('Login successful');
     } catch (err: any) {
+      console.error('Login Error:', err);
       if (err.code !== 'auth/cancelled-popup-request' && err.code !== 'auth/popup-closed-by-user') {
-        console.error('Login Error:', err);
+        setAuthError(err.message);
       }
     } finally {
       setIsLoggingIn(false);
@@ -147,10 +177,17 @@ export default function App() {
         </div>
 
         <div className="p-4 border-t border-[#141414]">
+          {authError && (
+            <div className="mb-4 p-2 bg-red-100 border border-red-400 text-red-700 text-xs rounded">
+              <p className="font-bold">Login Error:</p>
+              <p>{authError}</p>
+              <p className="mt-1 opacity-70">Add this domain to "Authorized Domains" in Firebase Console.</p>
+            </div>
+          )}
           {user ? (
             <button 
               onClick={handleLogout}
-              className="flex items-center gap-3 w-full p-3 hover:bg-[#141414] hover:text-[#E4E3E0] transition-colors rounded-sm group outline-none"
+              className="flex items-center gap-3 w-full p-3 hover:bg-[#141414] hover:text-[#E4E3E0] transition-colors rounded-sm group outline-none cursor-pointer"
             >
               <LogOut size={20} />
               <div className="hidden md:block font-mono text-[10px] uppercase tracking-widest text-left truncate">
@@ -161,10 +198,22 @@ export default function App() {
           ) : (
             <button 
               onClick={handleLogin}
-              className="flex items-center gap-3 w-full p-3 bg-[#141414] text-[#E4E3E0] hover:bg-opacity-90 transition-colors rounded-sm outline-none"
+              disabled={isLoggingIn}
+              className={cn(
+                "flex items-center gap-3 w-full p-3 transition-all rounded-sm outline-none cursor-pointer",
+                isLoggingIn ? "bg-zinc-500 text-white cursor-wait" : "bg-[#141414] text-[#E4E3E0] hover:bg-opacity-90 active:scale-[0.98]"
+              )}
             >
-              <UserIcon size={20} />
-              <span className="hidden md:block font-mono text-xs uppercase tracking-wider">Login</span>
+              {isLoggingIn ? (
+                <div className="w-5 h-5 flex items-center justify-center">
+                  <div className="w-4 h-4 border-2 border-white/20 border-t-white rounded-full animate-spin" />
+                </div>
+              ) : (
+                <UserIcon size={20} />
+              )}
+              <span className="hidden md:block font-mono text-xs uppercase tracking-wider">
+                {isLoggingIn ? 'Wait...' : 'Login'}
+              </span>
             </button>
           )}
         </div>
@@ -182,6 +231,7 @@ export default function App() {
             >
               <TournamentDetails 
                 tournament={selectedTournament} 
+                profile={profile}
                 onBack={() => setSelectedTournament(null)} 
               />
             </motion.div>
@@ -201,10 +251,10 @@ export default function App() {
                         <span className="font-mono text-xs uppercase opacity-50 block mb-2 tracking-widest">Active Events</span>
                         <h2 className="text-5xl font-black italic uppercase tracking-tighter">Live Tournaments</h2>
                       </div>
-                      {user && (
+                      {user && profile?.role === 'admin' && (
                         <button 
                           onClick={() => setShowCreateModal(true)}
-                          className="flex items-center gap-2 bg-[#141414] text-[#E4E3E0] px-6 py-3 font-mono text-xs uppercase tracking-widest hover:scale-[0.98] transition-transform"
+                          className="flex items-center gap-2 bg-[#141414] text-[#E4E3E0] px-6 py-3 font-mono text-xs uppercase tracking-widest hover:scale-[0.98] transition-transform shadow-[4px_4px_0px_0px_rgba(255,78,0,0.3)]"
                         >
                           <Plus size={16} /> Create Tournament
                         </button>
@@ -231,7 +281,7 @@ export default function App() {
                   exit={{ opacity: 0, y: -10 }}
                   className="max-w-6xl mx-auto"
                 >
-                  <AnalyticsModule />
+                  <AnalyticsModule profile={profile} />
                 </motion.section>
               )}
 
@@ -243,7 +293,7 @@ export default function App() {
                   exit={{ opacity: 0, y: -10 }}
                   className="max-w-6xl mx-auto"
                 >
-                  <AthleteStats />
+                  <AthleteStats profile={profile} />
                 </motion.section>
               )}
 
@@ -261,9 +311,9 @@ export default function App() {
                      <div className="h-px bg-[#141414] w-full mt-4" />
                    </header>
                    <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-                     <StatCard label="Live Matches" value="12" sub="Active now" />
-                     <StatCard label="Total Athletes" value="124" sub="Across all clubs" />
-                     <StatCard label="Upcoming Events" value="3" sub="This month" />
+                     <StatCard label="Live Matches" value={liveMatchesCount.toString()} sub="Active now" />
+                     <StatCard label="Total Athletes" value={totalAthletesCount.toString()} sub="Across all clubs" />
+                     <StatCard label="Upcoming Events" value={upcomingEventsCount.toString()} sub="This month" />
                    </div>
                  </motion.section>
               )}

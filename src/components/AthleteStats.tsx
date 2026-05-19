@@ -4,7 +4,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { Trophy, TrendingUp, Users, Activity, Search, ChevronRight } from 'lucide-react';
 import { collection, query, limit, getDocs, orderBy, where } from 'firebase/firestore';
 import { db } from '../lib/firebase';
-import { Athlete } from '../types';
+import { Athlete, UserProfile } from '../types';
 import AthleteProfile from './AthleteProfile';
 
 const MOCK_STATS = [
@@ -15,7 +15,7 @@ const MOCK_STATS = [
   { name: 'May', wins: 12, losses: 2 },
 ];
 
-export default function AthleteStats() {
+export default function AthleteStats({ profile }: { profile: UserProfile | null }) {
   const [selectedAthleteId, setSelectedAthleteId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [athletes, setAthletes] = useState<Athlete[]>([]);
@@ -44,7 +44,7 @@ export default function AthleteStats() {
   );
 
   if (selectedAthleteId) {
-    return <AthleteProfile athleteId={selectedAthleteId} onBack={() => setSelectedAthleteId(null)} />;
+    return <AthleteProfile athleteId={selectedAthleteId} profile={profile} onBack={() => setSelectedAthleteId(null)} />;
   }
 
   return (

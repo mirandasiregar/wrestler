@@ -59,9 +59,15 @@ export interface Athlete {
   name: string;
   clubId?: string;
   clubName?: string;
+  tournamentId: string;
+  bracketId: string;
+  status: 'pending' | 'ongoing' | 'completed';
   totalMatches: number;
   wins: number;
   losses: number;
+  gender: 'male' | 'female';
+  photoURL?: string;
+  weightClass?: string;
   weight?: number;
   createdAt: any;
   updatedAt: any;

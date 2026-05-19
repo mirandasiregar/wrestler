@@ -4,7 +4,8 @@ import { getFirestore, doc, getDocFromServer, collection } from 'firebase/firest
 import firebaseConfig from '../../firebase-applet-config.json';
 
 const app = initializeApp(firebaseConfig);
-const databaseId = firebaseConfig.firestoreDatabaseId;
+const databaseId = (firebaseConfig as any).firestoreDatabaseId;
+
 export const db = (databaseId && databaseId !== '(default)') 
   ? getFirestore(app, databaseId) 
   : getFirestore(app);

@@ -3,16 +3,37 @@ import { db, auth, handleFirestoreError, OperationType } from '../lib/firebase';
 import { collection, addDoc, doc, setDoc, writeBatch } from 'firebase/firestore';
 import { X, Plus, Trash2, Trophy, MapPin, Calendar } from 'lucide-react';
 import { motion } from 'motion/react';
+import { cn } from '../lib/utils';
 import { generateKnockoutBracket } from '../services/bracketService';
 
 export default function CreateTournament({ onOpenChange }: { onOpenChange: (open: boolean) => void }) {
   const [name, setName] = useState('');
   const [location, setLocation] = useState('');
-  const [weightClasses, setWeightClasses] = useState(['57kg', '65kg', '74kg']);
+  const [weightClasses, setWeightClasses] = useState<string[]>(['57kg', '65kg', '74kg']);
+  const [customWC, setCustomWC] = useState('');
   const [loading, setLoading] = useState(false);
 
+  const STANDARD_WEIGHT_CLASSES = [
+    '50kg', '53kg', '57kg', '61kg', '65kg', '70kg', '74kg', '79kg', '86kg', '92kg', '97kg', '125kg'
+  ];
+
+  const toggleWeightClass = (wc: string) => {
+    if (weightClasses.includes(wc)) {
+      setWeightClasses(weightClasses.filter(w => w !== wc));
+    } else {
+      setWeightClasses([...weightClasses, wc]);
+    }
+  };
+
+  const addCustomWC = () => {
+    if (customWC && !weightClasses.includes(customWC)) {
+      setWeightClasses([...weightClasses, customWC.trim().toUpperCase()]);
+      setCustomWC('');
+    }
+  };
+
   const handleCreate = async () => {
-    if (!name || !location) return;
+    if (!name || !location || weightClasses.length === 0) return;
     setLoading(true);
 
     try {
@@ -28,12 +49,14 @@ export default function CreateTournament({ onOpenChange }: { onOpenChange: (open
 
       const tournamentRef = await addDoc(collection(db, 'tournaments'), tournamentData);
 
-      // Create brackets and empty matches
+      // Create brackets
       for (const wc of weightClasses) {
+        if (!wc) continue;
         const bracketRef = doc(collection(db, `tournaments/${tournamentRef.id}/brackets`));
         await setDoc(bracketRef, {
-          bracketId: bracketRef.id,
+          id: bracketRef.id,
           weightClass: wc,
+          gender: 'male', // Default to male, can be adjusted later in TournamentDetails
           style: 'freestyle',
           tournamentId: tournamentRef.id,
           createdAt: new Date(),
@@ -53,9 +76,9 @@ export default function CreateTournament({ onOpenChange }: { onOpenChange: (open
       <motion.div 
         initial={{ scale: 0.9, opacity: 0 }}
         animate={{ scale: 1, opacity: 1 }}
-        className="bg-[#E4E3E0] border-2 border-[#141414] w-full max-w-2xl p-8"
+        className="bg-[#E4E3E0] border-2 border-[#141414] w-full max-w-2xl p-8 max-h-[90vh] overflow-y-auto"
       >
-        <div className="flex justify-between items-start mb-12">
+        <div className="flex justify-between items-start mb-8">
           <h2 className="text-3xl font-black uppercase italic tracking-tighter">New Tournament</h2>
           <button onClick={() => onOpenChange(false)} className="p-2 hover:bg-[#141414] hover:text-[#E4E3E0] transition-colors">
             <X size={24} />
@@ -68,42 +91,68 @@ export default function CreateTournament({ onOpenChange }: { onOpenChange: (open
             <InputField label="Location" value={location} onChange={setLocation} placeholder="e.g. Istora Senayan" />
           </div>
 
-          <div>
-            <div className="flex justify-between items-center mb-4">
-              <span className="font-mono text-[10px] uppercase tracking-widest opacity-50">Weight Classes</span>
-              <button 
-                onClick={() => setWeightClasses([...weightClasses, ''])}
-                className="text-[10px] font-mono uppercase bg-[#141414] text-[#E4E3E0] px-3 py-1"
-              >
-                + Add Class
-              </button>
+          <div className="space-y-4">
+            <div className="flex justify-between items-center">
+              <span className="font-mono text-[10px] uppercase tracking-widest opacity-50">Select Standard Weight Classes</span>
             </div>
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-              {weightClasses.map((wc, idx) => (
-                <div key={idx} className="relative group">
-                  <input 
-                    type="text" 
-                    value={wc} 
-                    onChange={(e) => {
-                      const newClasses = [...weightClasses];
-                      newClasses[idx] = e.target.value;
-                      setWeightClasses(newClasses);
-                    }}
-                    className="w-full bg-white border border-[#141414] p-3 font-mono text-xs uppercase outline-none focus:bg-[#141414] focus:text-[#E4E3E0] transition-colors"
-                  />
-                  <button 
-                    onClick={() => setWeightClasses(weightClasses.filter((_, i) => i !== idx))}
-                    className="absolute right-2 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-50 hover:opacity-100 transition-opacity"
-                  >
-                    <Trash2 size={14} />
-                  </button>
-                </div>
+            <div className="flex flex-wrap gap-2">
+              {STANDARD_WEIGHT_CLASSES.map((wc) => (
+                <button
+                  key={wc}
+                  onClick={() => toggleWeightClass(wc)}
+                  className={cn(
+                    "px-4 py-2 font-mono text-[10px] uppercase tracking-widest border border-[#141414] transition-all",
+                    weightClasses.includes(wc) 
+                      ? "bg-[#141414] text-[#E4E3E0] shadow-[4px_4px_0px_0px_rgba(255,78,0,0.5)]" 
+                      : "bg-white hover:bg-[#141414]/5"
+                  )}
+                >
+                  {wc}
+                </button>
               ))}
             </div>
           </div>
 
+          <div className="space-y-4">
+            <div className="flex justify-between items-center">
+              <span className="font-mono text-[10px] uppercase tracking-widest opacity-50">Add Custom Class</span>
+            </div>
+            <div className="flex gap-2">
+              <input 
+                type="text" 
+                value={customWC}
+                onChange={(e) => setCustomWC(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && addCustomWC()}
+                placeholder="e.g. 130kg"
+                className="flex-1 bg-white border border-[#141414] p-3 font-mono text-xs uppercase outline-none focus:ring-2 focus:ring-[#FF4E00] transition-all"
+              />
+              <button 
+                onClick={addCustomWC}
+                className="bg-[#141414] text-[#E4E3E0] px-6 py-2 font-mono text-[10px] uppercase tracking-widest hover:bg-orange-600 transition-colors"
+              >
+                + Add
+              </button>
+            </div>
+          </div>
+
+          {weightClasses.length > 0 && (
+            <div className="space-y-2">
+              <span className="font-mono text-[10px] uppercase tracking-widest opacity-50">Active Selections ({weightClasses.length})</span>
+              <div className="flex flex-wrap gap-2 p-4 border border-dashed border-[#141414]/20 bg-white/50">
+                {weightClasses.map(wc => (
+                  <div key={wc} className="flex items-center gap-2 bg-[#141414] text-[#E4E3E0] px-3 py-1 font-mono text-[9px] uppercase tracking-widest">
+                    {wc}
+                    <button onClick={() => toggleWeightClass(wc)} className="hover:text-red-400">
+                      <X size={12} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           <button 
-            disabled={loading}
+            disabled={loading || !name || !location || weightClasses.length === 0}
             onClick={handleCreate}
             className="w-full py-6 bg-[#141414] text-[#E4E3E0] font-black uppercase tracking-[0.2em] italic text-lg hover:scale-[0.99] transition-transform disabled:opacity-50"
           >

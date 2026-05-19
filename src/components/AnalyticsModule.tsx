@@ -12,8 +12,9 @@ import {
 } from 'lucide-react';
 import { collection, query, getDocs, limit, orderBy } from 'firebase/firestore';
 import { db } from '../lib/firebase';
-import { Athlete } from '../types';
+import { Athlete, UserProfile } from '../types';
 import { cn } from '../lib/utils';
+import AthleteProfile from './AthleteProfile';
 
 // Mock data for advanced analytics since it's not in the DB yet
 const TECHNIQUE_DATA = [
@@ -43,10 +44,11 @@ const COMPARISON_METRICS = [
 
 const COLORS = ['#FF4E00', '#141414', '#525252', '#A3A3A3'];
 
-export default function AnalyticsModule() {
+export default function AnalyticsModule({ profile }: { profile: UserProfile | null }) {
   const [loading, setLoading] = useState(true);
   const [athletes, setAthletes] = useState<Athlete[]>([]);
   const [selectedAthletes, setSelectedAthletes] = useState<Athlete[]>([]);
+  const [selectedAthleteId, setSelectedAthleteId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [activeMetric, setActiveMetric] = useState<'techniques' | 'heatmap' | 'comparison'>('techniques');
 
@@ -83,6 +85,10 @@ export default function AnalyticsModule() {
   const filteredItems = athletes.filter(a => 
     a.name.toLowerCase().includes(searchQuery.toLowerCase())
   );
+
+  if (selectedAthleteId) {
+    return <AthleteProfile athleteId={selectedAthleteId} profile={profile} onBack={() => setSelectedAthleteId(null)} />;
+  }
 
   return (
     <div className="space-y-12 pb-24">
@@ -128,20 +134,27 @@ export default function AnalyticsModule() {
               {filteredItems.map(a => {
                 const isSelected = selectedAthletes.find(sa => sa.athleteId === a.athleteId);
                 return (
-                  <button 
+                  <div 
                     key={a.athleteId} 
-                    onClick={() => toggleAthleteSelection(a)}
                     className={cn(
-                      "w-full text-left p-3 border transition-all flex items-center justify-between group",
+                      "w-full p-3 border transition-all flex items-center justify-between group",
                       isSelected ? "bg-[#141414] border-[#141414] text-white" : "border-zinc-200 hover:border-[#141414]"
                     )}
                   >
-                    <div>
-                      <div className="font-bold uppercase tracking-tight text-[11px] truncate leading-none mb-1">{a.name}</div>
+                    <button 
+                      onClick={() => setSelectedAthleteId(a.athleteId)}
+                      className="text-left flex-1 min-w-0 mr-2"
+                    >
+                      <div className="font-bold uppercase tracking-tight text-[11px] truncate leading-none mb-1 group-hover:underline">{a.name}</div>
                       <div className={cn("font-mono text-[8px] uppercase tracking-widest opacity-50", isSelected && "opacity-70")}>{a.clubName || 'INDEPENDENT'}</div>
-                    </div>
-                    {isSelected ? <X size={12} /> : <UserPlus size={12} className="opacity-30 group-hover:opacity-100" />}
-                  </button>
+                    </button>
+                    <button 
+                      onClick={() => toggleAthleteSelection(a)}
+                      className="shrink-0 p-1 hover:bg-white/10 rounded"
+                    >
+                      {isSelected ? <X size={12} /> : <UserPlus size={12} className={cn("opacity-30 group-hover:opacity-100", !isSelected && "text-black")} />}
+                    </button>
+                  </div>
                 );
               })}
             </div>

@@ -1,26 +1,48 @@
 import React, { useState } from 'react';
 import { db, handleFirestoreError, OperationType } from '../lib/firebase';
-import { doc, updateDoc } from 'firebase/firestore';
+import { doc, updateDoc, increment } from 'firebase/firestore';
 import { Match } from '../types';
 import { Check, X, ShieldAlert, Trophy } from 'lucide-react';
 import { motion } from 'motion/react';
 import { cn } from '../lib/utils';
 
-export default function ScoringPanel({ match, tournamentId, bracketId, onOpenChange }: { match: Match, tournamentId: string, bracketId: string, onOpenChange: (open: boolean) => void }) {
+export default function ScoringPanel({ match, athleteMap, tournamentId, bracketId, onOpenChange }: { match: Match, athleteMap: Record<string, string>, tournamentId: string, bracketId: string, onOpenChange: (open: boolean) => void }) {
   const [scoreA, setScoreA] = useState(match.scoreA);
   const [scoreB, setScoreB] = useState(match.scoreB);
   const [loading, setLoading] = useState(false);
+
+  const nameA = match.athleteAId ? (athleteMap[match.athleteAId] || "Loading...") : "TBA";
+  const nameB = match.athleteBId ? (athleteMap[match.athleteBId] || "Loading...") : "TBA";
 
   const handleUpdateScore = async () => {
     setLoading(true);
     try {
       const matchRef = doc(db, `tournaments/${tournamentId}/brackets/${bracketId}/matches/${match.id}`);
-      await updateDoc(matchRef, {
+      const updates: any = {
         scoreA,
         scoreB,
         updatedAt: new Date()
-      });
-      // In a real app, winner logic might be more complex (pin, tech fall, etc)
+      };
+
+      // Automatically set status to ongoing if it's currently pending
+      if (match.status === 'pending') {
+        updates.status = 'ongoing';
+        // Also update athlete statuses to ongoing
+        if (match.athleteAId) {
+          await updateDoc(doc(db, 'athletes', match.athleteAId), { 
+            status: 'ongoing',
+            updatedAt: new Date()
+          });
+        }
+        if (match.athleteBId) {
+          await updateDoc(doc(db, 'athletes', match.athleteBId), { 
+            status: 'ongoing',
+            updatedAt: new Date()
+          });
+        }
+      }
+
+      await updateDoc(matchRef, updates);
     } catch (error) {
       handleFirestoreError(error, OperationType.UPDATE, `tournaments/${tournamentId}/brackets/${bracketId}/matches/${match.id}`);
     } finally {
@@ -48,6 +70,57 @@ export default function ScoringPanel({ match, tournamentId, bracketId, onOpenCha
         status: 'completed',
         updatedAt: new Date()
       });
+
+      // Update athlete statistics and STATUSES
+      if (match.athleteAId || match.athleteBId) {
+        const promises = [];
+        
+        if (match.athleteAId) {
+          const isWinnerA = finalWinnerId === match.athleteAId;
+          const isLoserA = finalWinnerId && finalWinnerId !== match.athleteAId;
+          promises.push(updateDoc(doc(db, 'athletes', match.athleteAId), {
+            totalMatches: increment(1),
+            wins: isWinnerA ? increment(1) : increment(0),
+            losses: isLoserA ? increment(1) : increment(0),
+            status: isWinnerA ? 'pending' : 'completed', // Winner is pending for next match, Loser is finished
+            updatedAt: new Date()
+          }));
+        }
+
+        if (match.athleteBId) {
+          const isWinnerB = finalWinnerId === match.athleteBId;
+          const isLoserB = finalWinnerId && finalWinnerId !== match.athleteBId;
+          promises.push(updateDoc(doc(db, 'athletes', match.athleteBId), {
+            totalMatches: increment(1),
+            wins: isWinnerB ? increment(1) : increment(0),
+            losses: isLoserB ? increment(1) : increment(0),
+            status: isWinnerB ? 'pending' : 'completed', // Winner is pending for next match, Loser is finished
+            updatedAt: new Date()
+          }));
+        }
+
+        await Promise.all(promises);
+      }
+
+      // Advance winner to the next round
+      if (finalWinnerId) {
+        const nextRound = match.round + 1;
+        const nextPosition = Math.floor(match.position / 2);
+        const isAthleteA = match.position % 2 === 0;
+        
+        const nextMatchId = `r${nextRound}-p${nextPosition}`;
+        const nextMatchRef = doc(db, `tournaments/${tournamentId}/brackets/${bracketId}/matches/${nextMatchId}`);
+        
+        // We update the next match if it exists
+        await updateDoc(nextMatchRef, {
+          [isAthleteA ? 'athleteAId' : 'athleteBId']: finalWinnerId,
+          updatedAt: new Date()
+        }).catch(err => {
+          // If next match doesn't exist (e.g. final round reached), it's fine
+          console.log("Next match not found or final round reached", err);
+        });
+      }
+
       onOpenChange(false);
     } catch (error) {
       handleFirestoreError(error, OperationType.UPDATE, `tournaments/${tournamentId}/brackets/${bracketId}/matches/${match.id}`);
@@ -74,14 +147,14 @@ export default function ScoringPanel({ match, tournamentId, bracketId, onOpenCha
           <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 font-black italic text-4xl opacity-10 select-none">VS</div>
           
           <ScoreControl 
-            name={match.athleteAId || "Athlete A"} 
+            name={nameA} 
             score={scoreA} 
             onChange={setScoreA} 
             color="blue"
           />
           
           <ScoreControl 
-            name={match.athleteBId || "Athlete B"} 
+            name={nameB} 
             score={scoreB} 
             onChange={setScoreB} 
             color="red"
@@ -110,16 +183,16 @@ export default function ScoringPanel({ match, tournamentId, bracketId, onOpenCha
             <p className="font-mono text-[10px] uppercase opacity-40 mb-3 text-center">Override Winner (Manual Selective)</p>
             <div className="grid grid-cols-2 gap-4">
               <button 
-                disabled={loading}
-                onClick={() => handleFinishMatch(match.athleteAId!)}
-                className="py-3 border border-[#141414] text-[#141414] font-mono text-[10px] uppercase tracking-widest hover:bg-blue-600 hover:text-white transition-colors flex items-center justify-center gap-2"
+                disabled={loading || !match.athleteAId}
+                onClick={() => match.athleteAId && handleFinishMatch(match.athleteAId)}
+                className="py-3 border border-[#141414] text-[#141414] font-mono text-[10px] uppercase tracking-widest hover:bg-blue-600 hover:text-white transition-colors flex items-center justify-center gap-2 disabled:opacity-20"
               >
                 <Trophy size={12} /> Force Winner A
               </button>
               <button 
-                disabled={loading}
-                onClick={() => handleFinishMatch(match.athleteBId!)}
-                className="py-3 border border-[#141414] text-[#141414] font-mono text-[10px] uppercase tracking-widest hover:bg-red-600 hover:text-white transition-colors flex items-center justify-center gap-2"
+                disabled={loading || !match.athleteBId}
+                onClick={() => match.athleteBId && handleFinishMatch(match.athleteBId)}
+                className="py-3 border border-[#141414] text-[#141414] font-mono text-[10px] uppercase tracking-widest hover:bg-red-600 hover:text-white transition-colors flex items-center justify-center gap-2 disabled:opacity-20"
               >
                 <Trophy size={12} /> Force Winner B
               </button>
@@ -141,13 +214,20 @@ function ScoreControl({ name, score, onChange, color }: { name: string, score: n
         {name}
       </div>
       <div className="text-8xl font-black italic mb-6 tabular-nums">{score}</div>
-      <div className="flex gap-2">
-        <button onClick={() => onChange(Math.max(0, score - 1))} className="w-12 h-12 border-2 border-[#141414] flex items-center justify-center font-bold hover:bg-[#141414] hover:text-[#E4E3E0] transition-colors">-</button>
-        <button onClick={() => onChange(score + 1)} className="w-12 h-12 border-2 border-[#141414] bg-[#141414] text-[#E4E3E0] flex items-center justify-center font-bold hover:bg-zinc-800 transition-colors">+</button>
+      <div className="grid grid-cols-5 gap-2 w-full mb-4">
+         {[1, 2, 3, 4, 5].map(pts => (
+           <button 
+             key={pts}
+             onClick={() => onChange(score + pts)} 
+             className="py-3 border border-[#141414] font-mono text-[10px] hover:bg-[#141414] hover:text-[#E4E3E0] transition-colors"
+           >
+             +{pts}
+           </button>
+         ))}
       </div>
-      <div className="grid grid-cols-2 gap-2 mt-2 w-full">
-         <button onClick={() => onChange(score + 2)} className="py-2 border border-[#141414] font-mono text-[10px] hover:bg-[#141414] hover:text-[#E4E3E0] transition-colors">+2 pts</button>
-         <button onClick={() => onChange(score + 4)} className="py-2 border border-[#141414] font-mono text-[10px] hover:bg-[#141414] hover:text-[#E4E3E0] transition-colors">+4 pts</button>
+      <div className="flex gap-4 w-full">
+        <button onClick={() => onChange(Math.max(0, score - 1))} className="flex-1 h-12 border-2 border-[#141414] flex items-center justify-center font-bold hover:bg-[#141414] hover:text-[#E4E3E0] transition-colors">DECREASE (-1)</button>
+        <button onClick={() => onChange(0)} className="px-4 h-12 border-2 border-red-500 text-red-500 flex items-center justify-center font-mono text-[8px] uppercase tracking-widest hover:bg-red-500 hover:text-white transition-colors">Reset</button>
       </div>
     </div>
   );
