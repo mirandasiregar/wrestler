@@ -2,15 +2,17 @@ import React, { useState, useEffect } from 'react';
 import { auth, db, googleProvider, handleFirestoreError, OperationType } from './lib/firebase';
 import { onAuthStateChanged, signInWithPopup, signOut, User } from 'firebase/auth';
 import { collection, query, getDocs, where, limit, orderBy, onSnapshot, doc, setDoc, collectionGroup } from 'firebase/firestore';
-import { Trophy, Users, BarChart3, Settings, LogOut, ChevronRight, Plus, MapPin, Calendar, Layout, User as UserIcon } from 'lucide-react';
+import { Trophy, Users, BarChart3, Settings, LogOut, ChevronRight, Plus, MapPin, Calendar, Layout, User as UserIcon, Tv } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn, formatDate } from './lib/utils';
 import { Tournament, Athlete, UserProfile } from './types';
 import TournamentDetails from './components/TournamentDetails';
+import { HashRouter, Routes, Route } from 'react-router-dom';
 
 import AthleteStats from './components/AthleteStats';
 import AnalyticsModule from './components/AnalyticsModule';
 import CreateTournament from './components/CreateTournament';
+import LiveScoreboard from './components/LiveScoreboard';
 
 // Mock/Initial Data for demonstration if empty
 const INITIAL_TOURNAMENTS: Partial<Tournament>[] = [
@@ -18,13 +20,13 @@ const INITIAL_TOURNAMENTS: Partial<Tournament>[] = [
   { id: '2', name: 'Piala Gubernur Banten', location: 'Serang', status: 'upcoming', startDate: new Date(Date.now() + 86400000 * 14), createdAt: new Date() },
 ];
 
-export default function App() {
+function AppMainContent() {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [isLoggingIn, setIsLoggingIn] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
-  const [activeTab, setActiveTab] = useState<'tournaments' | 'stats' | 'dashboard' | 'analytics'>('tournaments');
+  const [activeTab, setActiveTab] = useState<'tournaments' | 'stats' | 'dashboard' | 'analytics' | 'scoreboard'>('tournaments');
   const [tournaments, setTournaments] = useState<Tournament[]>([]);
   const [liveMatchesCount, setLiveMatchesCount] = useState(0);
   const [totalAthletesCount, setTotalAthletesCount] = useState(0);
@@ -134,7 +136,7 @@ export default function App() {
     );
   }
 
-  return (
+  const renderDashboardShell = () => (
     <div className="min-h-screen bg-[#E4E3E0] text-[#141414] selection:bg-[#141414] selection:text-[#E4E3E0]">
       {/* Sidebar Navigation */}
       <nav className="fixed left-0 top-0 h-full w-20 md:w-64 border-r border-[#141414] bg-[#E4E3E0] z-50 flex flex-col pt-8">
@@ -153,6 +155,12 @@ export default function App() {
             onClick={() => { setActiveTab('tournaments'); setSelectedTournament(null); }}
             icon={<Trophy size={20} />}
             label="Tournaments"
+          />
+          <NavButton 
+            active={activeTab === 'scoreboard'} 
+            onClick={() => { setActiveTab('scoreboard'); setSelectedTournament(null); }}
+            icon={<Tv size={20} />}
+            label="Live Board"
           />
           <NavButton 
             active={activeTab === 'analytics'} 
@@ -273,6 +281,18 @@ export default function App() {
                 </motion.section>
               )}
 
+              {activeTab === 'scoreboard' && (
+                <motion.section
+                  key="scoreboard"
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -10 }}
+                  className="max-w-6xl mx-auto"
+                >
+                  <LiveScoreboard />
+                </motion.section>
+              )}
+
               {activeTab === 'analytics' && (
                 <motion.section
                   key="analytics"
@@ -328,6 +348,30 @@ export default function App() {
         </AnimatePresence>
       </main>
     </div>
+  );
+
+  return (
+    <Routes>
+      <Route path="/match/:matchId" element={
+        <div className="min-h-screen bg-[#141414] text-white p-8">
+          <LiveScoreboard />
+        </div>
+      } />
+      <Route path="/match/:tournamentId/:bracketId/:matchId" element={
+        <div className="min-h-screen bg-[#141414] text-white p-8">
+          <LiveScoreboard />
+        </div>
+      } />
+      <Route path="/*" element={renderDashboardShell()} />
+    </Routes>
+  );
+}
+
+export default function App() {
+  return (
+    <HashRouter>
+      <AppMainContent />
+    </HashRouter>
   );
 }
 

@@ -1,14 +1,17 @@
 import React, { useState, useEffect } from 'react';
 import { db, handleFirestoreError, OperationType, auth } from '../lib/firebase';
-import { collection, query, where, getDocs, onSnapshot, doc, updateDoc, addDoc, writeBatch, deleteDoc } from 'firebase/firestore';
+import { collection, query, where, getDocs, onSnapshot, doc, updateDoc, addDoc, writeBatch, deleteDoc, increment } from 'firebase/firestore';
 import { Tournament, Bracket, Match, Athlete, UserProfile } from '../types';
-import { ChevronLeft, ChevronRight, Trophy, Users, Info, Layout, Plus, UserPlus, Edit3, Save, X as CloseIcon, Trash2 } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Trophy, Users, Info, Layout, Plus, UserPlus, Edit3, Save, X as CloseIcon, Trash2, List } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '../lib/utils';
 import ScoringPanel from './ScoringPanel';
 import MatchDetails from './MatchDetails';
 import { generateKnockoutBracket } from '../services/bracketService';
 import AthleteProfile from './AthleteProfile';
+import ManualPairing from './ManualPairing';
+import MatchList from './MatchList';
+import { usePairingLogic } from './usePairingLogic';
 
 export default function TournamentDetails({ tournament, profile, onBack }: { tournament: Tournament, profile: UserProfile | null, onBack: () => void }) {
   const [brackets, setBrackets] = useState<Bracket[]>([]);
@@ -19,6 +22,8 @@ export default function TournamentDetails({ tournament, profile, onBack }: { tou
   const [viewingMatchId, setViewingMatchId] = useState<string | null>(null);
   const [selectedAthleteId, setSelectedAthleteId] = useState<string | null>(null);
 
+  const { autoPairRemainingAthletes, handleManualPair } = usePairingLogic();
+
   const viewingMatch = viewingMatchId ? matches.find(m => m.id === viewingMatchId) : null;
   const [loading, setLoading] = useState(true);
   const [isAddingAthlete, setIsAddingAthlete] = useState(false);
@@ -28,7 +33,7 @@ export default function TournamentDetails({ tournament, profile, onBack }: { tou
   const [statusFilter, setStatusFilter] = useState<'all' | 'pending' | 'ongoing' | 'completed'>('all');
   const [pairingSlot, setPairingSlot] = useState<{ matchId: string, slot: 'A' | 'B' } | null>(null);
   const [isEditPairingsMode, setIsEditPairingsMode] = useState(false);
-  const [activeTab, setActiveTab] = useState<'bracket' | 'athletes'>('bracket');
+  const [activeTab, setActiveTab] = useState<'bracket' | 'list' | 'manual' | 'athletes'>('bracket');
   const [isEditingTournament, setIsEditingTournament] = useState(false);
   const [editTournamentData, setEditTournamentData] = useState({
     name: tournament.name,
@@ -230,6 +235,76 @@ export default function TournamentDetails({ tournament, profile, onBack }: { tou
     }
   };
 
+  const handleStartMatch = async (match: Match) => {
+    try {
+      const matchRef = doc(db, `tournaments/${tournament.id}/brackets/${activeBracket?.id}/matches/${match.id}`);
+      await updateDoc(matchRef, {
+        status: 'ongoing',
+        updatedAt: new Date(),
+        startTime: new Date()
+      });
+      // Set athlete statuses to ongoing
+      if (match.athleteAId) {
+        await updateDoc(doc(db, 'athletes', match.athleteAId), { 
+          status: 'ongoing',
+          updatedAt: new Date()
+        });
+      }
+      if (match.athleteBId) {
+        await updateDoc(doc(db, 'athletes', match.athleteBId), { 
+          status: 'ongoing',
+          updatedAt: new Date()
+        });
+      }
+      // Instantly open live scoring popup
+      setSelectedMatch({ ...match, status: 'ongoing' });
+    } catch (error) {
+      console.error("Error starting match:", error);
+    }
+  };
+
+  const handleFinishMatchFromList = async (match: Match, winnerId: string) => {
+    try {
+      const matchRef = doc(db, `tournaments/${tournament.id}/brackets/${activeBracket?.id}/matches/${match.id}`);
+      const isWinnerA = winnerId === match.athleteAId;
+      
+      await updateDoc(matchRef, {
+        winnerId,
+        status: 'completed',
+        updatedAt: new Date()
+      });
+
+      const promises = [];
+      if (match.athleteAId) {
+        promises.push(updateDoc(doc(db, 'athletes', match.athleteAId), {
+          totalMatches: increment(1),
+          wins: isWinnerA ? increment(1) : increment(0),
+          losses: !isWinnerA ? increment(1) : increment(0),
+          status: isWinnerA ? 'pending' : 'completed',
+          updatedAt: new Date()
+        }));
+      }
+      if (match.athleteBId) {
+        const isWinnerB = winnerId === match.athleteBId;
+        promises.push(updateDoc(doc(db, 'athletes', match.athleteBId), {
+          totalMatches: increment(1),
+          wins: isWinnerB ? increment(1) : increment(0),
+          losses: !isWinnerB ? increment(1) : increment(0),
+          status: isWinnerB ? 'pending' : 'completed',
+          updatedAt: new Date()
+        }));
+      }
+      await Promise.all(promises);
+
+      // Trigger automatic pairing of remaining athletes!
+      if (activeBracket) {
+        await autoPairRemainingAthletes(tournament.id, activeBracket.id);
+      }
+    } catch (error) {
+      console.error("Error finishing match:", error);
+    }
+  };
+
   if (selectedAthleteId) {
     return <AthleteProfile athleteId={selectedAthleteId} profile={profile} onBack={() => setSelectedAthleteId(null)} />;
   }
@@ -373,7 +448,7 @@ export default function TournamentDetails({ tournament, profile, onBack }: { tou
         </div>
 
         {activeBracket && (
-          <div className="flex gap-4">
+          <div className="flex flex-wrap gap-4">
             <button
               onClick={() => setActiveTab('bracket')}
               className={cn(
@@ -384,6 +459,24 @@ export default function TournamentDetails({ tournament, profile, onBack }: { tou
               Bracket View
             </button>
             <button
+              onClick={() => setActiveTab('list')}
+              className={cn(
+                "px-4 py-1 font-mono text-[9px] uppercase tracking-widest border border-[#141414] transition-colors",
+                activeTab === 'list' ? "bg-[#141414] text-[#E4E3E0]" : "hover:bg-[#141414]/5"
+              )}
+            >
+              Matches List
+            </button>
+            <button
+              onClick={() => setActiveTab('manual')}
+              className={cn(
+                "px-4 py-1 font-mono text-[9px] uppercase tracking-widest border border-[#141414] transition-colors flex items-center gap-2",
+                activeTab === 'manual' ? "bg-[#141414] text-[#E4E3E0]" : "hover:bg-[#141414]/5"
+              )}
+            >
+              <Users size={11} /> Manual Pairing (Drag & Drop)
+            </button>
+            <button
               onClick={() => setActiveTab('athletes')}
               className={cn(
                 "px-4 py-1 font-mono text-[9px] uppercase tracking-widest border border-[#141414] transition-colors",
@@ -392,7 +485,7 @@ export default function TournamentDetails({ tournament, profile, onBack }: { tou
             >
               Participants ({athletes.length})
             </button>
-            {activeBracket && matches.length > 0 && isOrganizer && (
+            {activeBracket && matches.length > 0 && isOrganizer && activeTab === 'bracket' && (
               <button
                 onClick={() => setIsEditPairingsMode(!isEditPairingsMode)}
                 className={cn(
@@ -504,6 +597,43 @@ export default function TournamentDetails({ tournament, profile, onBack }: { tou
           </div>
         )}
       </div>
+      ) : activeTab === 'list' ? (
+        activeBracket ? (
+          <div className="py-12">
+            <MatchList
+              matches={matches}
+              athletes={athletes}
+              isOrganizer={isOrganizer}
+              onEnterScoring={setSelectedMatch}
+              onStartMatch={handleStartMatch}
+              onFinishMatch={handleFinishMatchFromList}
+            />
+          </div>
+        ) : (
+          <div className="py-24 text-center opacity-40 font-mono text-xs uppercase tracking-widest">
+            Select a weight class first.
+          </div>
+        )
+      ) : activeTab === 'manual' ? (
+        activeBracket ? (
+          <div className="py-12">
+            <ManualPairing
+              athletes={athletes}
+              matches={matches}
+              activeBracket={activeBracket}
+              onAssignAthlete={async (matchId, slot, athleteId) => {
+                await handleManualPair(tournament.id, activeBracket.id, matchId, slot, athleteId);
+              }}
+              isOrganizer={isOrganizer}
+              onStartMatch={handleStartMatch}
+              onEnterScoring={setSelectedMatch}
+            />
+          </div>
+        ) : (
+          <div className="py-24 text-center opacity-40 font-mono text-xs uppercase tracking-widest">
+            Select a weight class first.
+          </div>
+        )
       ) : (
         <div className="py-12 space-y-12">
           {(['pending', 'ongoing', 'completed'] as const).map(groupStatus => {

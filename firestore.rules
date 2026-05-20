@@ -1,33 +1,15 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Basic helpers
+    
+    // Default fallback rules
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Helper functions
     function isSignedIn() {
       return request.auth != null;
-    }
-
-    // Rules for tournaments and its subcollections
-    match /tournaments/{allPaths=**} {
-      allow read: if true;
-      allow write: if isSignedIn();
-    }
-
-    // Rules for matches (supporting collectionGroup)
-    match /{path=**}/matches/{matchId} {
-      allow read: if true;
-      allow write: if isSignedIn();
-    }
-
-    // Rules for athletes
-    match /athletes/{allPaths=**} {
-      allow read: if true;
-      allow write: if isSignedIn();
-    }
-
-    // Rules for matches (top-level fallback if used)
-    match /matches/{allPaths=**} {
-      allow read: if true;
-      allow write: if isSignedIn();
     }
 
     // Rules for users
@@ -37,9 +19,52 @@ service cloud.firestore {
       allow write: if isSignedIn() && request.auth.uid == userId;
     }
 
-    // Default deny
-    match /{document=**} {
-      allow read, write: if false;
+    // Rules for tournaments
+    match /tournaments/{tournamentId} {
+      allow read: if true;
+      allow create: if isSignedIn();
+      allow update, delete: if isSignedIn() && 
+        (resource.data.organizerId == request.auth.uid || 
+         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin');
+    }
+
+    // Rules for tournament brackets
+    match /tournaments/{tournamentId}/brackets/{bracketId} {
+      allow read: if true;
+      allow write: if isSignedIn() && 
+        get(/databases/$(database)/documents/tournaments/$(tournamentId)).data.organizerId == request.auth.uid;
+    }
+
+    match /{path=**}/brackets/{bracketId} {
+      allow read: if true;
+    }
+
+    // Rules for tournament bracket matches
+    match /tournaments/{tournamentId}/brackets/{bracketId}/matches/{matchId} {
+      allow read: if true;
+      allow create, delete: if isSignedIn() && 
+        (get(/databases/$(database)/documents/tournaments/$(tournamentId)).data.organizerId == request.auth.uid ||
+         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin');
+      allow update: if isSignedIn() && 
+        (get(/databases/$(database)/documents/tournaments/$(tournamentId)).data.organizerId == request.auth.uid ||
+         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin') &&
+        (request.resource.data.status == 'pending' || request.resource.data.status == 'ongoing' || request.resource.data.status == 'completed') &&
+        (request.resource.data.status == 'completed' ? request.resource.data.winnerId != null : true);
+    }
+
+    match /{path=**}/matches/{matchId} {
+      allow read: if true;
+    }
+
+    // Rules for athletes
+    match /athletes/{athleteId} {
+      allow read: if true;
+      allow create: if isSignedIn();
+      allow update, delete: if isSignedIn() && 
+        (resource == null || 
+         (resource.data.userId != null && resource.data.userId == request.auth.uid) ||
+         (resource.data.tournamentId != null && get(/databases/$(database)/documents/tournaments/$(resource.data.tournamentId)).data.organizerId == request.auth.uid) ||
+         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin');
     }
   }
 }
