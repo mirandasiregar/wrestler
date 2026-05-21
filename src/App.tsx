@@ -109,7 +109,17 @@ function AppMainContent() {
       console.log('Login successful');
     } catch (err: any) {
       console.error('Login Error:', err);
-      if (err.code !== 'auth/cancelled-popup-request' && err.code !== 'auth/popup-closed-by-user') {
+      const errCode = (err?.code || '').toLowerCase();
+      const errMsg = (err?.message || '').toLowerCase();
+      const isCancelled = 
+        errCode.includes('cancel') || 
+        errCode.includes('closed-by-user') ||
+        errMsg.includes('cancel') ||
+        errMsg.includes('closed-by-user') ||
+        errMsg.includes('popup-closed-by-user') ||
+        errMsg.includes('popup_closed_by_user');
+
+      if (!isCancelled) {
         setAuthError(err.message);
       }
     } finally {
@@ -174,12 +184,12 @@ function AppMainContent() {
             icon={<Users size={20} />}
             label="Athlete Stats"
           />
-          {user && (
+           {user && (
             <NavButton 
               active={activeTab === 'dashboard'} 
               onClick={() => { setActiveTab('dashboard'); setSelectedTournament(null); }}
               icon={<Layout size={20} />}
-              label="My Dashboard"
+              label={profile?.role === 'admin' ? "Admin Dashboard" : "My Dashboard"}
             />
           )}
         </div>
@@ -193,16 +203,36 @@ function AppMainContent() {
             </div>
           )}
           {user ? (
-            <button 
-              onClick={handleLogout}
-              className="flex items-center gap-3 w-full p-3 hover:bg-[#141414] hover:text-[#E4E3E0] transition-colors rounded-sm group outline-none cursor-pointer"
-            >
-              <LogOut size={20} />
-              <div className="hidden md:block font-mono text-[10px] uppercase tracking-widest text-left truncate">
-                {user.displayName || 'User'}
-                <div className="opacity-50 text-[8px] lowercase">{profile?.role || 'user'}</div>
-              </div>
-            </button>
+            <div className="space-y-2">
+              <button 
+                onClick={handleLogout}
+                className="flex items-center gap-3 w-full p-3 hover:bg-[#141414] hover:text-[#E4E3E0] transition-colors rounded-sm group outline-none cursor-pointer"
+              >
+                <LogOut size={20} />
+                <div className="hidden md:block font-mono text-[10px] uppercase tracking-widest text-left truncate">
+                  {user.displayName || 'User'}
+                  <div className="opacity-50 text-[8px] lowercase">{profile?.role || 'user'}</div>
+                </div>
+              </button>
+              
+              {profile && (
+                <button
+                  onClick={async () => {
+                    const nextRole = profile.role === 'admin' ? 'athlete' : 'admin';
+                    try {
+                      await setDoc(doc(db, 'users', user.uid), { role: nextRole, updatedAt: new Date() }, { merge: true });
+                      setProfile(prev => prev ? { ...prev, role: nextRole } : null);
+                    } catch (err) {
+                      console.error("Failed to toggle role:", err);
+                    }
+                  }}
+                  className="hidden md:flex w-full items-center justify-center gap-1.5 py-1 px-2 border border-dashed border-[#141414] hover:bg-[#141414] hover:text-[#E4E3E0] font-mono text-[8px] uppercase tracking-widest font-bold transition-all"
+                  title="Switch sandbox test role between Admin and Athlete"
+                >
+                  Switch Test Role to {profile.role === 'admin' ? 'ATHLETE' : 'ADMIN'}
+                </button>
+              )}
+            </div>
           ) : (
             <button 
               onClick={handleLogin}
@@ -259,14 +289,6 @@ function AppMainContent() {
                         <span className="font-mono text-xs uppercase opacity-50 block mb-2 tracking-widest">Active Events</span>
                         <h2 className="text-5xl font-black italic uppercase tracking-tighter">Live Tournaments</h2>
                       </div>
-                      {user && profile?.role === 'admin' && (
-                        <button 
-                          onClick={() => setShowCreateModal(true)}
-                          className="flex items-center gap-2 bg-[#141414] text-[#E4E3E0] px-6 py-3 font-mono text-xs uppercase tracking-widest hover:scale-[0.98] transition-transform shadow-[4px_4px_0px_0px_rgba(255,78,0,0.3)]"
-                        >
-                          <Plus size={16} /> Create Tournament
-                        </button>
-                      )}
                     </div>
                     <div className="h-px bg-[#141414] w-full mt-4" />
                   </header>
@@ -326,10 +348,37 @@ function AppMainContent() {
                    className="max-w-6xl mx-auto"
                  >
                    <header className="mb-12">
-                     <span className="font-mono text-xs uppercase opacity-50 block mb-2 tracking-widest">User Panel</span>
-                     <h2 className="text-5xl font-black italic uppercase tracking-tighter">My Dashboard</h2>
+                     <span className="font-mono text-xs uppercase opacity-50 block mb-2 tracking-widest">
+                       {profile?.role === 'admin' ? 'ADMIN MANAGER PANEL' : 'ATHLETE PANEL'}
+                     </span>
+                     <h2 className="text-5xl font-black italic uppercase tracking-tighter">
+                       {profile?.role === 'admin' ? 'Dashboard Admin Pengelola' : 'My Dashboard'}
+                     </h2>
                      <div className="h-px bg-[#141414] w-full mt-4" />
                    </header>
+
+                   {profile?.role === 'admin' && (
+                     <div className="mb-10 bg-white border-2 border-[#141414] p-8 flex flex-col md:flex-row justify-between items-start md:items-center gap-6 shadow-[8px_8px_0px_0px_rgba(255,78,0,0.15)] relative overflow-hidden group">
+                       <div className="absolute right-0 top-0 h-full w-24 bg-gradient-to-l from-[#FF4E00]/10 to-transparent pointer-events-none" />
+                       <div className="space-y-2 max-w-2xl relative z-10">
+                         <div className="flex items-center gap-2">
+                           <span className="w-2 h-2 rounded-full bg-[#FF4E00] animate-pulse" />
+                           <span className="font-mono text-[9px] uppercase tracking-widest font-bold text-orange-600">Event Manager Tool</span>
+                         </div>
+                         <h3 className="text-3xl font-black italic uppercase tracking-tight">Buat Turnamen Baru</h3>
+                         <p className="font-mono text-[10px] uppercase opacity-60 tracking-wider leading-relaxed">
+                           Mulai turnamen baru, kelola data kontestan, atur mat tanding, dan buat bagan bagan kompetisi dengan kontrol admin penuh.
+                         </p>
+                       </div>
+                       <button 
+                         onClick={() => setShowCreateModal(true)}
+                         className="flex items-center gap-2 bg-[#141414] text-[#E4E3E0] px-8 py-4 font-mono text-[11px] uppercase font-bold tracking-widest hover:bg-[#FF4E00] hover:text-white hover:scale-[0.98] transition-all shrink-0 duration-200 shadow-[4px_4px_0px_0px_rgba(20,20,20,0.2)]"
+                       >
+                         <Plus size={16} /> Tambah Turnamen
+                       </button>
+                     </div>
+                   )}
+
                    <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
                      <StatCard label="Live Matches" value={liveMatchesCount.toString()} sub="Active now" />
                      <StatCard label="Total Athletes" value={totalAthletesCount.toString()} sub="Across all clubs" />
