@@ -490,17 +490,75 @@ export function LiveScoreboard() {
             </div>
 
             {/* Stadium Clock / Controls */}
-            <div className="md:col-span-1 flex flex-col items-center justify-center p-4 bg-zinc-900 border border-zinc-800 rounded-lg h-full max-h-[300px]">
-              <Clock size={20} className="opacity-40 mb-3" />
-              <div className="font-mono text-3xl font-bold tracking-widest text-[#FF4E00] tabular-nums select-none mb-4">
+            <div className="md:col-span-1 flex flex-col items-center justify-center p-4 bg-zinc-900 border border-zinc-800 rounded-lg h-full min-h-[320px]">
+              <Clock size={18} className="opacity-40 mb-2" />
+              <div className="font-mono text-3xl font-bold tracking-widest text-[#FF4E00] tabular-nums select-none mb-3">
                 {matchMinutes.toString().padStart(2, '0')}:{matchSeconds.toString().padStart(2, '0')}
               </div>
               
+              {/* Manual Time Adjusters */}
+              <div className="w-full flex flex-col gap-2 rounded bg-zinc-950 p-2.5 border border-zinc-800/80 mb-4 select-none">
+                <div className="flex items-center justify-between">
+                  <span className="font-mono text-[8px] uppercase tracking-widest text-zinc-500 font-bold">Minutes</span>
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      onClick={() => setMatchMinutes(prev => Math.max(0, prev - 1))}
+                      className="p-1 bg-zinc-800 hover:bg-[#FF4E00]/20 hover:text-[#FF4E00] active:scale-90 rounded text-stone-200 border border-zinc-700 transition flex items-center justify-center"
+                      title="Subtract 1 minute"
+                    >
+                      <Minus size={10} />
+                    </button>
+                    <button
+                      onClick={() => setMatchMinutes(prev => prev + 1)}
+                      className="p-1 bg-zinc-800 hover:bg-[#FF4E00]/20 hover:text-[#FF4E00] active:scale-90 rounded text-stone-200 border border-zinc-700 transition flex items-center justify-center"
+                      title="Add 1 minute"
+                    >
+                      <Plus size={10} />
+                    </button>
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between">
+                  <span className="font-mono text-[8px] uppercase tracking-widest text-zinc-500 font-bold">Seconds</span>
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      onClick={() => {
+                        setMatchSeconds(prev => {
+                          if (prev > 0) return prev - 1;
+                          if (matchMinutes > 0) {
+                            setMatchMinutes(m => m - 1);
+                            return 59;
+                          }
+                          return 0;
+                        });
+                      }}
+                      className="p-1 bg-zinc-800 hover:bg-[#FF4E00]/20 hover:text-[#FF4E00] active:scale-90 rounded text-stone-200 border border-zinc-700 transition flex items-center justify-center"
+                      title="Subtract 1 second"
+                    >
+                      <Minus size={10} />
+                    </button>
+                    <button
+                      onClick={() => {
+                        setMatchSeconds(prev => {
+                          if (prev < 59) return prev + 1;
+                          setMatchMinutes(m => m + 1);
+                          return 0;
+                        });
+                      }}
+                      className="p-1 bg-zinc-800 hover:bg-[#FF4E00]/20 hover:text-[#FF4E00] active:scale-90 rounded text-stone-200 border border-zinc-700 transition flex items-center justify-center"
+                      title="Add 1 second"
+                    >
+                      <Plus size={10} />
+                    </button>
+                  </div>
+                </div>
+              </div>
+
               <div className="flex flex-col gap-2 w-full">
                 <button
                   onClick={() => setIsTimerRunning(!isTimerRunning)}
                   className={cn(
-                    "w-full py-1.5 font-mono text-[8px] uppercase tracking-wider text-center border font-bold transition-all",
+                    "w-full py-1.5 font-mono text-[8px] uppercase tracking-wider text-center border font-bold transition-all shadow-[2px_2px_0px_0px_rgba(20,20,20,1)] hover:-translate-y-0.5 active:translate-y-0",
                     isTimerRunning 
                       ? "bg-red-800 text-white border-red-700 hover:bg-red-900" 
                       : "bg-emerald-800 text-white border-emerald-700 hover:bg-emerald-900"
@@ -514,9 +572,9 @@ export function LiveScoreboard() {
                     setMatchMinutes(3);
                     setMatchSeconds(0);
                   }}
-                  className="w-full py-1 font-mono text-[8px] uppercase tracking-widest text-center border border-white/20 hover:bg-white/10 transition-colors"
+                  className="w-full py-1 font-mono text-[8px] uppercase tracking-widest text-center border border-white/20 hover:bg-white/10 transition-colors flex items-center justify-center gap-1.5 text-zinc-300"
                 >
-                  RESET
+                  <RotateCcw size={10} /> RESET
                 </button>
               </div>
             </div>
