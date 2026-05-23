@@ -33,7 +33,7 @@ export default function AthleteProfile({ athleteId, profile, onBack }: { athlete
         
         if (athSnap.exists()) {
           const data = athSnap.data() as Athlete;
-          setAthlete({ athleteId: athSnap.id, ...data } as Athlete);
+          setAthlete({ ...data, athleteId: athSnap.id } as Athlete);
           setEditValues({
             name: data.name || '',
             clubName: data.clubName || '',
